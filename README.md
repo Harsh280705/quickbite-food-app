@@ -100,3 +100,63 @@ flutter run -d <ios-device-or-simulator> --dart-define=API_BASE_URL=http://127.0
 ```
 
 The iOS project is located at `frontend/ios/`. Do not build iOS on Windows.
+
+## Deploy on Cloudflare
+
+QuickBite's Flutter Web frontend is deployed on Cloudflare Pages.
+
+**Live website:** https://quickbite-web.pages.dev/
+
+### Deploy the frontend
+
+Run the following command from the repository root after building Flutter Web:
+
+```bash
+npx wrangler pages deploy frontend/build/web --project-name=quickbite-web --branch=main
+```
+
+If authentication is required, authenticate with your Cloudflare account. Ensure the `quickbite-web` Pages project exists and that `frontend/build/web` contains the latest production build.
+
+### Build with the production API URL
+
+Replace `YOUR_PUBLIC_API_URL` with the actual HTTPS URL of the reachable FastAPI backend.
+
+```bash
+cd frontend
+flutter pub get
+flutter build web --release --dart-define=API_BASE_URL=https://YOUR_PUBLIC_API_URL
+```
+
+Then return to the repository root and deploy:
+
+```bash
+cd ..
+npx wrangler pages deploy frontend/build/web --project-name=quickbite-web --branch=main
+```
+
+### Backend and local services
+
+Cloudflare Pages hosts the static Flutter Web frontend. The existing FastAPI backend, PostgreSQL database, RabbitMQ, and background workers must be running and reachable for API-dependent functionality.
+
+Start the existing local services with:
+
+```bash
+docker compose up -d --build
+docker compose ps
+```
+
+If using Cloudflare Tunnel to expose a backend running on your PC, keep the backend and tunnel running while using the website. Configure the production API URL and backend CORS using the actual HTTPS tunnel hostname and the frontend origin:
+
+`https://quickbite-web.pages.dev`
+
+Do not use a placeholder API URL in the production build. A temporary Cloudflare Quick Tunnel URL can change when the tunnel restarts.
+
+### Verify deployment
+
+1. Open https://quickbite-web.pages.dev/.
+2. Confirm the latest frontend loads.
+3. Test login, restaurant and menu loading, images, cart, checkout, and order history.
+4. Check the browser Network tab for API errors.
+5. Confirm the backend and required workers are healthy.
+
+**Important:** Deploying the frontend does not automatically deploy the backend or start local services.
