@@ -33,10 +33,21 @@ jobs:
         working-directory: frontend
         run: flutter analyze --no-fatal-infos
 
+      - name: Resolve production API URL
+        id: api_url
+        env:
+          API_BASE_URL: ${{ secrets.PRODUCTION_API_BASE_URL || vars.PRODUCTION_API_BASE_URL }}
+        run: |
+          if [ -z "$API_BASE_URL" ] || [ "$API_BASE_URL" = "https://YOUR-PUBLIC-API-DOMAIN" ]; then
+            echo "PRODUCTION_API_BASE_URL must be set to the HTTPS Cloudflare Tunnel URL." >&2
+            exit 1
+          fi
+          echo "api_base_url=$API_BASE_URL" >> "$GITHUB_OUTPUT"
+
       - name: Build web
         working-directory: frontend
         env:
-          API_BASE_URL: ${{ secrets.PRODUCTION_API_BASE_URL || vars.PRODUCTION_API_BASE_URL || 'https://YOUR-PUBLIC-API-DOMAIN' }}
+          API_BASE_URL: ${{ steps.api_url.outputs.api_base_url }}
         run: flutter build web --release --dart-define=API_BASE_URL=$API_BASE_URL
 
       - name: Verify build output

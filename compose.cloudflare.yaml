@@ -1,0 +1,148 @@
+# QuickBite — Cloudflare Tunnel production composition
+# Uses the existing FastAPI/PostgreSQL/RabbitMQ/worker stack unchanged.
+# The public entry point is a Cloudflare Tunnel; no backend host ports are published.
+name: quickbite-cloudflare
+
+x-backend-image: &backend_image
+  build:
+    context: ./backend
+  image: quickbite-cloudflare-backend:2.0.0
+  restart: unless-stopped
+
+x-backend-env: &backend_env
+  ENVIRONMENT: ${ENVIRONMENT:-production}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  DATABASE_URL: postgresql+asyncpg://quickbite:${POSTGRES_PASSWORD}@postgres:5432/quickbite
+  AMQP_URL: amqp://${RABBITMQ_USER:-quickbite}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+  JWT_SECRET: ${JWT_SECRET}
+  JWT_ACCESS_TOKEN_EXPIRE_MINUTES: ${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-120}
+  CORS_ORIGINS: ${CORS_ORIGINS}
+  SIM_PAYMENT_DELAY_MS: ${SIM_PAYMENT_DELAY_MS:-250}
+  SIM_RESTAURANT_DELAY_MS: ${SIM_RESTAURANT_DELAY_MS:-200}
+  SIM_DELIVERY_DELAY_MS: ${SIM_DELIVERY_DELAY_MS:-200}
+  SIM_NOTIFICATION_DELAY_MS: ${SIM_NOTIFICATION_DELAY_MS:-50}
+  DEMO_PAYMENT_MODE: success
+  DEMO_PAYMENT_FAIL_COUNT: 0
+  DEMO_RESTAURANT_MODE: success
+  DEMO_DELIVERY_MODE: success
+  DEMO_NOTIFICATION_MODE: success
+  DEMO_CRASH_MODE: none
+  DEMO_CRASH_ORDER_ID:
+  DISPATCHER_CRASH_MODE: none
+  DISPATCHER_CRASH_ORDER_ID:
+  RETRY_MAX_ATTEMPTS: ${RETRY_MAX_ATTEMPTS:-3}
+  RETRY_DELAYS_SECONDS: ${RETRY_DELAYS_SECONDS:-2,10,30}
+
+x-worker: &worker
+  <<: *backend_image
+  environment: *backend_env
+  restart: unless-stopped
+  depends_on:
+    postgres:
+      condition: service_healthy
+    rabbitmq:
+      condition: service_healthy
+  networks:
+    - quickbite
+
+services:
+  postgres:
+    image: postgres:16.4-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-quickbite}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-quickbite}
+      TZ: UTC
+      PGTZ: UTC
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    networks:
+      - quickbite
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:3.13.7-management
+    hostname: quickbite-rabbit
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-quickbite}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    volumes:
+      - rabbitmqdata:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    networks:
+      - quickbite
+    restart: unless-stopped
+
+  api:
+    <<: *backend_image
+    environment: *backend_env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]
+    networks:
+      - quickbite
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=3).status==200 else 1)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  payment-worker:
+    <<: *worker
+    command: ["python", "-m", "workers.payment_worker"]
+  restaurant-worker:
+    <<: *worker
+    command: ["python", "-m", "workers.restaurant_worker"]
+  delivery-worker:
+    <<: *worker
+    command: ["python", "-m", "workers.delivery_worker"]
+  notification-worker:
+    <<: *worker
+    command: ["python", "-m", "workers.notification_worker"]
+  outbox-dispatcher:
+    <<: *worker
+    command: ["python", "-m", "workers.outbox_dispatcher"]
+  retry-scheduler:
+    <<: *worker
+    command: ["python", "-m", "workers.retry_scheduler"]
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - quickbite
+
+networks:
+  quickbite:
+    name: quickbite-cloudflare-network
+
+volumes:
+  pgdata:
+    name: quickbite-cloudflare-postgres-data
+  rabbitmqdata:
+    name: quickbite-cloudflare-rabbitmq-data
