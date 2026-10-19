@@ -1,0 +1,8 @@
+﻿build/
+.dart_tool/
+.idea/
+android/.gradle/
+android/build/
+integration_test/
+test/
+*.iml

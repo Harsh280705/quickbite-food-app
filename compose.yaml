@@ -1,0 +1,210 @@
+# QuickBite — local full-stack composition
+# Project name is fixed so resources are namespaced as quickbite-local_* and
+# never collide with unrelated containers/volumes on this machine.
+name: quickbite-local
+
+x-backend-image: &backend_image
+  build:
+    context: ./backend
+  image: quickbite-local-backend:2.0.0
+  restart: unless-stopped
+
+# Shared backend process environment. Internal addresses use service names;
+# host tooling (pytest, load test) uses 127.0.0.1 via the .env DATABASE_URL/
+# AMQP_URL, which are deliberately NOT injected here.
+x-backend-env: &backend_env
+  ENVIRONMENT: ${ENVIRONMENT:-development}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  DATABASE_URL: postgresql+asyncpg://quickbite:${POSTGRES_PASSWORD:-quickbite_dev_password}@postgres:5432/quickbite
+  AMQP_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@rabbitmq:5672/
+  JWT_SECRET: ${JWT_SECRET:-quickbite-development-only-secret-change-me}
+  JWT_ACCESS_TOKEN_EXPIRE_MINUTES: ${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-120}
+  CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080,http://127.0.0.1:8080,http://localhost:5000}
+  SIM_PAYMENT_DELAY_MS: ${SIM_PAYMENT_DELAY_MS:-250}
+  SIM_RESTAURANT_DELAY_MS: ${SIM_RESTAURANT_DELAY_MS:-200}
+  SIM_DELIVERY_DELAY_MS: ${SIM_DELIVERY_DELAY_MS:-200}
+  SIM_NOTIFICATION_DELAY_MS: ${SIM_NOTIFICATION_DELAY_MS:-50}
+  DEMO_PAYMENT_MODE: ${DEMO_PAYMENT_MODE:-success}
+  DEMO_PAYMENT_FAIL_COUNT: ${DEMO_PAYMENT_FAIL_COUNT:-2}
+  DEMO_RESTAURANT_MODE: ${DEMO_RESTAURANT_MODE:-success}
+  DEMO_DELIVERY_MODE: ${DEMO_DELIVERY_MODE:-success}
+  DEMO_NOTIFICATION_MODE: ${DEMO_NOTIFICATION_MODE:-success}
+  DEMO_CRASH_MODE: ${DEMO_CRASH_MODE:-none}
+  DEMO_CRASH_ORDER_ID: ${DEMO_CRASH_ORDER_ID:-}
+  DISPATCHER_CRASH_MODE: ${DISPATCHER_CRASH_MODE:-none}
+  DISPATCHER_CRASH_ORDER_ID: ${DISPATCHER_CRASH_ORDER_ID:-}
+  RETRY_MAX_ATTEMPTS: ${RETRY_MAX_ATTEMPTS:-3}
+  RETRY_DELAYS_SECONDS: ${RETRY_DELAYS_SECONDS:-2,10,30}
+
+# A worker runs as: same image, different entry point, no host ports.
+x-worker: &worker
+  <<: *backend_image
+  environment: *backend_env
+  restart: unless-stopped
+  depends_on:
+    postgres:
+      condition: service_healthy
+    rabbitmq:
+      condition: service_healthy
+  networks:
+    - quickbite
+
+services:
+  postgres:
+    image: postgres:16.4-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-quickbite}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-quickbite_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-quickbite}
+      TZ: UTC
+      PGTZ: UTC
+    ports:
+      # Bound to loopback; high port avoids clashing with a host Postgres.
+      - "127.0.0.1:${POSTGRES_PORT:-55432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    networks:
+      - quickbite
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:3.13.7-management
+    hostname: quickbite-rabbit
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
+    ports:
+      # Management UI for local demonstrations; AMQP bound to loopback for the
+      # local test harness (workers inside the network use the service name).
+      - "127.0.0.1:${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+      - "127.0.0.1:${RABBITMQ_AMQP_PORT:-5672}:5672"
+    volumes:
+      - rabbitmqdata:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    networks:
+      - quickbite
+    restart: unless-stopped
+
+  api:
+    <<: *backend_image
+    environment: *backend_env
+    ports:
+      # Keep the API private to this host unless a physical device is being
+      # tested. Use compose.android-phone.yaml to add one explicit LAN bind.
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]
+    networks:
+      - quickbite
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=3).status==200 else 1)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  payment-worker:
+    <<: *worker
+    command: ["python", "-m", "workers.payment_worker"]
+    healthcheck:
+      # The escaped dot prevents `sh -c` from matching its own command line.
+      test: ["CMD-SHELL", "pgrep -f 'workers\\.payment_worker' > /dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  restaurant-worker:
+    <<: *worker
+    command: ["python", "-m", "workers.restaurant_worker"]
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'workers\\.restaurant_worker' > /dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  delivery-worker:
+    <<: *worker
+    command: ["python", "-m", "workers.delivery_worker"]
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'workers\\.delivery_worker' > /dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  notification-worker:
+    <<: *worker
+    command: ["python", "-m", "workers.notification_worker"]
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'workers\\.notification_worker' > /dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  outbox-dispatcher:
+    <<: *worker
+    command: ["python", "-m", "workers.outbox_dispatcher"]
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'workers\\.outbox_dispatcher' > /dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  retry-scheduler:
+    <<: *worker
+    command: ["python", "-m", "workers.retry_scheduler"]
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'workers\\.retry_scheduler' > /dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: quickbite-local-web:2.0.0
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_started
+    networks:
+      - quickbite
+    restart: unless-stopped
+
+networks:
+  quickbite:
+    name: ${COMPOSE_NETWORK_NAME:-quickbite-local-network}
+
+volumes:
+  pgdata:
+    name: ${POSTGRES_VOLUME_NAME:-quickbite-local-postgres-data}
+  rabbitmqdata:
+    name: ${RABBITMQ_VOLUME_NAME:-quickbite-local-rabbitmq-data}

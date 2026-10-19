@@ -1,0 +1,6 @@
+services:
+  api:
+    ports:
+      # Set API_LAN_IP to the PC's current trusted Wi-Fi IPv4 address.
+      # The base Compose file still keeps the host's loopback binding too.
+      - "${API_LAN_IP:?Set API_LAN_IP to the PC Wi-Fi IPv4 address}:${API_PORT:-8000}:8000"

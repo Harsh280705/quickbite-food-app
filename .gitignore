@@ -1,0 +1,63 @@
+# --- Python ---
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Secrets / local environment ---
+.env
+.env.test
+*.env.local
+
+# --- Node / Flutter ---
+frontend/.dart_tool/
+frontend/build/
+frontend/.flutter-plugins*
+frontend/.packages
+frontend/pubspec.lock.bak
+frontend/android/local.properties
+frontend/android/.gradle/
+frontend/android/app/.cxx/
+frontend/ios/Pods/
+frontend/ios/.symlinks/
+
+# --- Build artifacts ---
+*.egg-info/
+dist/
+build/
+backend/htmlcov/
+backend/.coverage
+backend/.alembic/
+
+# --- Editors / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- Logs / results (keep docs, drop transient logs) ---
+*.log
+logs/
+
+# --- Local/generated artifacts ---
+reports/
+backend/data/
+backend/*.err
+backend/*.out
+backend/.pytest_cache/
+
+# --- Temporary docs / audit notes ---
+docs/*_REPORT.md
+docs/*CHECKPOINT*.md
+docs/*STATUS.md
+docs/REMAINING_WORK.md
+docs/INTERRUPTION_DIAGNOSIS.md
+docs/REQUIREMENTS_TRACEABILITY.md
+docs/WORK_CHECKPOINT.md
+docs/FINAL_*.md
+
+# --- Flutter caches/builds ---
+frontend/.idea/
+frontend/ios/Pods/

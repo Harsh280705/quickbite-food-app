@@ -1,0 +1,55 @@
+name: Deploy Flutter Web to Cloudflare Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/deploy-web.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.7'
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: flutter pub get
+
+      - name: Analyze
+        working-directory: frontend
+        run: flutter analyze
+
+      - name: Build web
+        working-directory: frontend
+        env:
+          API_BASE_URL: ${{ secrets.PRODUCTION_API_BASE_URL || 'https://YOUR-PUBLIC-API-DOMAIN' }}
+        run: flutter build web --release --dart-define=API_BASE_URL=$API_BASE_URL
+
+      - name: Verify build output
+        working-directory: frontend
+        run: |
+          test -f build/web/index.html
+          test -f build/web/main.dart.js
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          projectName: quickbite-web
+          directory: frontend/build/web
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}

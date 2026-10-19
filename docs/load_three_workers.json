@@ -1,0 +1,21 @@
+{
+  "orders_requested": 100,
+  "orders_accepted": 100,
+  "submission_errors": 0,
+  "concurrency": 10,
+  "worker_label": "three-payment-workers",
+  "accept_elapsed_s": 0.568,
+  "total_elapsed_s": 7.837,
+  "orders_per_sec": 12.76,
+  "p50_ms": 42.46,
+  "p95_ms": 167.05,
+  "p99_ms": 176.1,
+  "min_ms": 31.16,
+  "max_ms": 176.1,
+  "remaining_unprocessed": 0,
+  "status_counts": {
+    "DRIVER_ASSIGNED": 100
+  },
+  "machine": "LAPTOP-350EGFK6",
+  "python": "3.11.0"
+}
