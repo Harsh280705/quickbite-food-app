@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../api/api_client.dart';
 import '../models.dart';
+import '../config.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common.dart';
 
@@ -263,7 +264,33 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
                               return AppCard(
                                 child: ListTile(
                                   leading: CircleAvatar(
-                                    child: Text(r.name.substring(0, 1)),
+                                    radius: 20,
+                                    backgroundColor: AppColors.accentSoft,
+                                    child: Stack(
+                                      alignment: Alignment.center,
+                                      children: [
+                                        Text(
+                                          r.name.substring(0, 1),
+                                          style: TextStyle(
+                                            color: Theme.of(context).colorScheme.onPrimaryContainer,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        if (r.imageUrl != null && r.imageUrl!.isNotEmpty)
+                                          ClipOval(
+                                            child: Image.network(
+                                              r.imageUrl!.startsWith('http')
+                                                  ? r.imageUrl!
+                                                  : '${AppConfig.apiBaseUrl}${r.imageUrl}',
+                                              width: 40,
+                                              height: 40,
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (context, error, stackTrace) =>
+                                                  const SizedBox.shrink(),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
                                   ),
                                   title: Text(r.name),
                                   subtitle: Text(
@@ -351,9 +378,35 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
                       final m = filtered[i];
                       return AppCard(
                         child: ListTile(
-                          leading: CircleAvatar(
-                            child: Text(m.name.substring(0, 1)),
-                          ),
+                           leading: CircleAvatar(
+                             radius: 20,
+                             backgroundColor: AppColors.accentSoft,
+                             child: Stack(
+                               alignment: Alignment.center,
+                               children: [
+                                 Text(
+                                   m.name.substring(0, 1),
+                                   style: TextStyle(
+                                     color: Theme.of(context).colorScheme.onPrimaryContainer,
+                                     fontWeight: FontWeight.w600,
+                                   ),
+                                 ),
+                                 if (m.imageUrl != null && m.imageUrl!.isNotEmpty)
+                                   ClipOval(
+                                     child: Image.network(
+                                       m.imageUrl!.startsWith('http')
+                                           ? m.imageUrl!
+                                           : '${AppConfig.apiBaseUrl}${m.imageUrl}',
+                                       width: 40,
+                                       height: 40,
+                                       fit: BoxFit.cover,
+                                       errorBuilder: (context, error, stackTrace) =>
+                                           const SizedBox.shrink(),
+                                     ),
+                                   ),
+                               ],
+                             ),
+                           ),
                           title: Text(m.name),
                           subtitle: Text(
                             '${m.currency} ${(m.priceMinor / 100).toStringAsFixed(2)} • ${m.isDiscontinued ? 'Discontinued' : (m.isAvailable ? 'Available' : 'Out of stock')}',
