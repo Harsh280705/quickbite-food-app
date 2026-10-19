@@ -100,7 +100,3 @@ flutter run -d <ios-device-or-simulator> --dart-define=API_BASE_URL=http://127.0
 ```
 
 The iOS project is located at `frontend/ios/`. Do not build iOS on Windows.
-
-## Cloudflare Pages
-
-Cloudflare Pages hosts only the compiled static Flutter Web output (`frontend/build/web`). The FastAPI backend and supporting services must be hosted separately. Configure `PRODUCTION_API_BASE_URL`, `CLOUDFLARE_API_TOKEN`, and `CLOUDFLARE_ACCOUNT_ID` as GitHub Actions secrets.
