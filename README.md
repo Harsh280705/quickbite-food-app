@@ -4,12 +4,28 @@ QuickBite is a full-stack food ordering application with a Flutter web/mobile fr
 
 ## Technology stack
 
-- Flutter / Dart (web and Android)
+- Flutter / Dart (web, Android and iOS)
 - FastAPI / Python
 - PostgreSQL
 - RabbitMQ
 - Docker Compose
 - Nginx (frontend container)
+
+## Project structure
+
+```text
+.
+├── backend/          # FastAPI app, workers, migrations, tests
+├── frontend/         # Flutter app
+│   ├── android/      # Android project
+│   ├── ios/          # iOS project (build on macOS with Xcode)
+│   ├── lib/          # Dart source
+│   ├── test/         # Flutter tests
+│   └── web/          # Web entry point and assets
+├── compose.yaml      # Local full-stack Docker Compose
+├── infra/            # Nginx and deployment support files
+└── scripts/          # Helper scripts
+```
 
 ## Prerequisites
 
@@ -69,6 +85,21 @@ flutter run -d <device-id> --dart-define=API_BASE_URL=http://10.0.2.2:8000
 ```
 
 Use `http://10.0.2.2:8000` for an emulator, or `http://<PC_LAN_IPV4>:8000` for a physical phone.
+
+## Run the iOS app
+
+iOS builds require macOS with Xcode and CocoaPods. From the frontend directory:
+
+```bash
+cd frontend
+flutter pub get
+cd ios
+pod install
+cd ..
+flutter run -d <ios-device-or-simulator> --dart-define=API_BASE_URL=http://127.0.0.1:8000
+```
+
+The iOS project is located at `frontend/ios/`. Do not build iOS on Windows.
 
 ## Cloudflare Pages
 
